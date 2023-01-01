@@ -1,0 +1,160 @@
+#importar pacotes e setar configurações de plots
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.stattools import acf
+from statsmodels.tsa.stattools import pacf
+
+sns.set_style()
+
+
+#Ler os dados
+df=pd.read_csv('C:/users/ruthmin/Desktop/FashionBeautySellers.csv', parse_dates=['DATE'],index_col=['DATE'])
+df.head()
+print(df)
+
+
+ts=df['sellers'].resample('MS').sum()
+ts.head()
+print(ts)
+ts.plot()
+
+#Decomposição
+decomposition = seasonal_decompose(ts)
+fig = decomposition.plot()
+
+
+
+#aplicar ADF e imprimir o resultado (teste de estacionaridade)
+X = ts
+
+result = adfuller(X)
+print('Dickey-Fuller Aumentado')
+print('Teste Estatístico: {:.4f}'.format(result[0]))
+print('Valor-p: {:.4f}'.format(result[1]))
+print('Valores Críticos:')
+for key, value in result[4].items():
+	print('\t{}: {:.4f}'.format(key, value))
+
+ma = ts.rolling(4).mean()
+
+fig, ax = plt.subplots()
+ts.plot(ax=ax, legend=False)
+ma.plot(ax=ax, legend=False, color='r')
+plt.tight_layout()
+
+
+
+#transformar valores em log
+ts_log = np.log(ts)
+ma_log = ts_log.rolling(4).mean()
+
+fig, ax = plt.subplots()
+ts_log.plot(ax=ax, legend=False)
+ma_log.plot(ax=ax, legend=False, color='r')
+plt.tight_layout()
+print(ts_log)
+print(ma_log)
+
+
+#subtrair média do log dos dados, com média em 12, pois iremos fazer anualmente
+ts_sub = (ts_log - ma_log).dropna()
+ma_sub = ts_sub.rolling(4).mean()
+
+#desvio padrão
+std_sub = ts_sub.rolling(4).std()
+
+fig, ax = plt.subplots()
+ts_sub.plot(ax=ax, legend=False)
+ma_sub.plot(ax=ax, legend=False, color='r')
+std_sub.plot(ax=ax, legend=False, color='g')
+plt.tight_layout()
+plt.show()
+
+
+
+#teste de estacionáridade para log
+X_sub = ts_sub
+
+# aplicar ADF e imprimir o resultado
+result_sub = adfuller(X_sub)
+print('Dickey-Fuller Aumentado')
+print('Teste Estatístico: {:.4f}'.format(result_sub[0]))
+print('Valor-p: {:.10f}'.format(result_sub[1]))
+print('Valores Críticos:')
+for key, value in result_sub[4].items():
+	print('\t{}: {:.4f}'.format(key, value))
+
+
+
+#Diferenciação
+
+#aplicar diferenciação
+ts_diff = ts_sub.diff(1)
+ma_diff = ts_diff.rolling(4).mean()
+#desvio padrão
+std_diff = ts_diff.rolling(4).std()
+
+#plotar a diferenciação
+fig, ax = plt.subplots()
+ts_diff.plot(ax=ax, legend=False)
+ma_diff.plot(ax=ax, legend=False, color='r')
+std_diff.plot(ax=ax, legend=False, color='g')
+plt.tight_layout()
+plt.show()
+
+
+#extrair apenas os valores e retirar os valores NA
+X= ts_diff.dropna().values
+
+# aplicar ADF e imprimir o resultado
+result_diff = adfuller(X)
+print('Dickey-Fuller Aumentado')
+print('Teste Estatístico: {:.4f}'.format(result_diff[0]))
+print('Valor-p: {:.10f}'.format(result_diff[1]))
+print('Valores Críticos:')
+for key, value in result_sub[4].items():
+	print('\t{}: {:.4f}'.format(key, value))
+
+
+# treinar o modelo ARIMA
+
+from statsmodels.graphics.tsaplots import plot_predict
+from pmdarima import auto_arima
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+import numpy as np
+import statsmodels.api as sm
+
+print(auto_arima(ts,seasonal=True,m=11).summary())
+
+n=len(ts)
+print(n)
+
+start_index=n-12
+print(start_index)
+
+ts_training=ts.iloc[:start_index]
+print(ts_training)
+
+ts_test=ts.iloc[start_index:]
+print(ts_test)
+
+
+model=SARIMAX(ts, order=(0,1,1), seasonal_order=(0, 1, 0, 12))
+result=model.fit()
+result.summary()
+
+Forecast=result.predict(start="2017-07-01", end="2019-12-01", dynamic=False, information_set='predicted', signal_only=False)
+print(Forecast)
+
+title='Sales Forecasting'
+ylabel='sales'
+xlabel=''
+ax=ts.plot(legend=True,figsize=(10,6),title=title)
+Forecast.plot(legend=True)
+ax.autoscale(axis='x',tight=True)
+ax.set(xlabel=xlabel, ylabel=ylabel)
+plt.show()
